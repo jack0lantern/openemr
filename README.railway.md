@@ -25,13 +25,15 @@ In the OpenEMR service **Variables** tab, add the following. Use Railway's refer
 | `MYSQL_USER`      | `openemr`                          | App-specific DB user (auto-created)|
 | `MYSQL_PASS`      | `${{MySQL.MYSQLPASSWORD}}`         | Same password, or set a custom one |
 | `OE_USER`         | `admin`                            | OpenEMR admin login username       |
-| `OE_PASS`         | *(choose a strong password)*       | OpenEMR admin login password       |
+| `OE_PASS`         | *(choose a strong password)*       | Make up your own secure password here |
 
 > **Security:** Set `OE_PASS` to a strong, unique password before deploying to production. Do not use the default `pass`.
 
 ### 4. Expose the service
 
 In the Railway service settings, enable a **Public Domain** under **Networking**. Railway's edge terminates TLS; OpenEMR receives plain HTTP on the internal port.
+
+> **Note on Ports:** Railway automatically sets a dynamic `PORT` environment variable and handles routing. **Do not** manually configure a port for the public domain or override the `PORT` variable.
 
 ### 5. Wait for first-run setup
 
