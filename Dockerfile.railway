@@ -3,6 +3,9 @@ FROM openemr/openemr:7.0.4
 # Railway injects a PORT env var for HTTP routing. Apache in the base image
 # is hardcoded to port 80, so this wrapper script reconfigures it at startup.
 COPY docker/railway/entrypoint.sh /railway-entrypoint.sh
+
+# Fix health check 404: .htaccess must pass path (readyz/livez) to index.php for PATH_INFO
+COPY meta/health/.htaccess /var/www/localhost/htdocs/openemr/meta/health/.htaccess
 RUN sed -i 's/\r$//' /railway-entrypoint.sh && chmod +x /railway-entrypoint.sh
 
 ENTRYPOINT ["/railway-entrypoint.sh"]
