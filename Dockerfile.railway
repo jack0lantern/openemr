@@ -1,0 +1,8 @@
+FROM openemr/openemr:7.0.4
+
+# Railway injects a PORT env var for HTTP routing. Apache in the base image
+# is hardcoded to port 80, so this wrapper script reconfigures it at startup.
+COPY docker/railway/entrypoint.sh /railway-entrypoint.sh
+RUN chmod +x /railway-entrypoint.sh
+
+ENTRYPOINT ["/railway-entrypoint.sh"]
