@@ -73,7 +73,7 @@ class BearerTokenAuthorizationStrategy implements IAuthorizationStrategy
     {
         if (is_string($publicKey)) {
             // If the public key is a string, we can convert it to a CryptKey instance.
-            $publicKey = new CryptKey($publicKey);
+            $publicKey = new CryptKey($publicKey, null, false);
         }
         $this->publicKey = $publicKey;
     }
