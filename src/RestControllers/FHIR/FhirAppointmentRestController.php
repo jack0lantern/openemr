@@ -17,16 +17,20 @@ use OpenEMR\FHIR\R4\FHIRResource\FHIRBundle\FHIRBundleEntry;
 use OpenEMR\RestControllers\RestControllerHelper;
 use OpenEMR\Services\FHIR\FhirAppointmentService;
 use OpenEMR\Services\FHIR\FhirResourcesService;
+use OpenEMR\Services\FHIR\FhirValidationService;
+use OpenEMR\Services\FHIR\Serialization\FhirAppointmentSerializer;
 
 class FhirAppointmentRestController
 {
     private readonly FhirAppointmentService $fhirAppointmentService;
     private readonly FhirResourcesService $fhirService;
+    private readonly FhirValidationService $fhirValidate;
 
     public function __construct(HttpRestRequest $request)
     {
         $this->fhirAppointmentService = new FhirAppointmentService($request->getApiBaseFullUrl());
         $this->fhirService = new FhirResourcesService();
+        $this->fhirValidate = new FhirValidationService();
     }
 
     /**
@@ -163,5 +167,59 @@ class FhirAppointmentRestController
         $bundleSearchResult = $this->fhirService->createBundle('Appointment', $bundleEntries, false);
         $searchResponseBody = RestControllerHelper::responseHandler($bundleSearchResult, null, 200);
         return $searchResponseBody;
+    }
+
+    /**
+     * Creates a new FHIR Appointment resource.
+     * @param array $fhirJson The FHIR Appointment resource
+     * @returns 201 if the resource is created, 400 if the resource is invalid
+     */
+    #[OA\Post(
+        path: '/fhir/Appointment',
+        description: 'Adds an Appointment resource.',
+        tags: ['fhir'],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\MediaType(
+                mediaType: 'application/json',
+                schema: new OA\Schema(
+                    description: 'The json object for the Appointment resource.',
+                    type: 'object'
+                )
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: '201',
+                description: 'Resource created',
+                content: new OA\MediaType(
+                    mediaType: 'application/json',
+                    schema: new OA\Schema(
+                        properties: [
+                            new OA\Property(
+                                property: 'json object',
+                                description: 'FHIR Json object.',
+                                type: 'object'
+                            ),
+                        ]
+                    )
+                )
+            ),
+            new OA\Response(response: '400', ref: '#/components/responses/badrequest'),
+            new OA\Response(response: '401', ref: '#/components/responses/unauthorized'),
+        ],
+        security: [['openemr_auth' => []]]
+    )]
+    public function post($fhirJson)
+    {
+        $fhirValidate = $this->fhirValidate->validate($fhirJson);
+        if (!empty($fhirValidate)) {
+            return RestControllerHelper::responseHandler($fhirValidate, null, 400);
+        }
+
+        $object = FhirAppointmentSerializer::deserialize($fhirJson);
+
+        $processingResult = $this->fhirAppointmentService->insert($object);
+        return RestControllerHelper::handleFhirProcessingResult($processingResult, 201);
     }
 }

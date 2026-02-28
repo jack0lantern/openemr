@@ -116,6 +116,13 @@ return [
 
         return $return;
     },
+    "POST /fhir/Appointment" => function (HttpRestRequest $request) {
+        RestConfig::request_authorization_check($request, "patients", "appt");
+        $data = (array) (json_decode(file_get_contents("php://input"), true));
+        $return = (new FhirAppointmentRestController($request))->post($data);
+
+        return $return;
+    },
     "GET /fhir/CarePlan" => function (HttpRestRequest $request) {
         $getParams = $request->getQueryParams();
         if ($request->isPatientRequest()) {

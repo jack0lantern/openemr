@@ -11,6 +11,8 @@
 
 namespace OpenEMR\Services\FHIR;
 
+use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\FHIR\R4\FHIRDomainResource\FHIRAppointment;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRAppointmentStatus;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRCodeableConcept;
@@ -20,11 +22,13 @@ use OpenEMR\FHIR\R4\FHIRElement\FHIRInstant;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRMeta;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRParticipationStatus;
 use OpenEMR\FHIR\R4\FHIRResource\FHIRAppointment\FHIRAppointmentParticipant;
+use OpenEMR\FHIR\R4\FHIRResource\FHIRDomainResource;
 use OpenEMR\Services\AppointmentService;
 use OpenEMR\Services\FHIR\Traits\BulkExportSupportAllOperationsTrait;
 use OpenEMR\Services\FHIR\Traits\FhirBulkExportDomainResourceTrait;
 use OpenEMR\Services\FHIR\Traits\FhirServiceBaseEmptyTrait;
 use OpenEMR\Services\FHIR\Traits\PatientSearchTrait;
+use OpenEMR\Services\PatientService;
 use OpenEMR\Services\Search\FhirSearchParameterDefinition;
 use OpenEMR\Services\Search\ISearchField;
 use OpenEMR\Services\Search\SearchFieldType;
@@ -289,5 +293,192 @@ class FhirAppointmentService extends FhirServiceBase implements IPatientCompartm
         } else {
             return $fhirProvenance;
         }
+    }
+
+    /**
+     * Parses a FHIR Appointment resource, returning the equivalent OpenEMR record.
+     *
+     * @param FHIRDomainResource $fhirResource The source FHIR resource
+     * @return array a mapped OpenEMR data record (array)
+     */
+    public function parseFhirResource(FHIRDomainResource $fhirResource)
+    {
+        if (!$fhirResource instanceof FHIRAppointment) {
+            throw new \BadMethodCallException("FHIR resource must be of type FHIRAppointment");
+        }
+
+        $patientService = new PatientService();
+        $pid = null;
+        $pc_aid = null;
+        $pc_facility = null;
+        $pc_billing_location = null;
+
+        foreach ($fhirResource->getParticipant() ?? [] as $participant) {
+            $actor = $participant->getActor();
+            if (empty($actor) || empty($actor->getReference())) {
+                continue;
+            }
+            $ref = (string) $actor->getReference();
+            $parsed = UtilsService::parseReference($actor);
+            $uuid = $parsed['uuid'] ?? null;
+            $resourceType = $parsed['type'] ?? null;
+
+            if (empty($uuid) && !empty($ref)) {
+                $parts = explode('/', $ref);
+                if (count($parts) >= 2) {
+                    $resourceType = $parts[0] ?? null;
+                    $uuid = $parts[1] ?? null;
+                }
+            }
+
+            if (empty($uuid)) {
+                continue;
+            }
+
+            $uuidBytes = UuidRegistry::uuidToBytes($uuid);
+
+            if ($resourceType === 'Patient') {
+                $pid = $patientService->getPidByUuid($uuid);
+            } elseif ($resourceType === 'Practitioner' || $resourceType === 'Person') {
+                $pc_aid = \OpenEMR\Services\BaseService::getIdByUuid($uuidBytes, 'users', 'id');
+            } elseif ($resourceType === 'Location') {
+                $facilityId = QueryUtils::fetchSingleValue(
+                    "SELECT f.id FROM facility f
+                    INNER JOIN uuid_mapping um ON f.uuid = um.target_uuid AND um.resource = 'Location'
+                    WHERE um.uuid = ?",
+                    'id',
+                    [$uuidBytes]
+                );
+                if ($facilityId !== null && $facilityId !== false) {
+                    $pc_facility = $facilityId;
+                    $pc_billing_location = $pc_facility;
+                }
+            }
+        }
+
+        if (empty($pid)) {
+            throw new \InvalidArgumentException("Appointment must have a Patient participant");
+        }
+
+        if (empty($pc_facility)) {
+            $pc_facility = QueryUtils::fetchSingleValue("SELECT id FROM facility ORDER BY id LIMIT 1", 'id', []);
+            $pc_billing_location = $pc_facility;
+        }
+
+        $start = $fhirResource->getStart();
+        $startValue = $start && method_exists($start, 'getValue') ? $start->getValue() : ($start ?? null);
+        if (empty($startValue)) {
+            throw new \InvalidArgumentException("Appointment must have a start date/time");
+        }
+
+        $startDt = new \DateTime($startValue);
+        $pc_eventDate = $startDt->format('Y-m-d');
+        $pc_startTime = $startDt->format('H:i:s');
+
+        $minutesDuration = 30;
+        $minutesEl = $fhirResource->getMinutesDuration();
+        if ($minutesEl && method_exists($minutesEl, 'getValue')) {
+            $minutesDuration = (int) $minutesEl->getValue();
+        } elseif ($fhirResource->getEnd()) {
+            $end = $fhirResource->getEnd();
+            $endValue = $end && method_exists($end, 'getValue') ? $end->getValue() : null;
+            if ($endValue) {
+                $endDt = new \DateTime($endValue);
+                $minutesDuration = (int) (($endDt->getTimestamp() - $startDt->getTimestamp()) / 60);
+            }
+        }
+        $pc_duration = max(1, $minutesDuration);
+
+        $pc_catid = 1;
+        $appointmentType = $fhirResource->getAppointmentType();
+        if ($appointmentType && $appointmentType->getCoding()) {
+            $coding = $appointmentType->getCoding()[0] ?? null;
+            $code = $coding ? (string) $coding->getCode() : null;
+            $display = $coding ? (string) $coding->getDisplay() : null;
+            $categories = $this->appointmentService->getCalendarCategories();
+            foreach ($categories as $cat) {
+                if (($code && ($cat['pc_constant_id'] ?? '') === $code)
+                    || ($display && stripos($cat['pc_catname'] ?? '', $display) !== false)) {
+                    $pc_catid = (int) $cat['pc_catid'];
+                    break;
+                }
+            }
+        }
+
+        $pc_apptstatus = '^';
+        $statusEl = $fhirResource->getStatus();
+        if ($statusEl && method_exists($statusEl, 'getValue')) {
+            $status = (string) $statusEl->getValue();
+            $pc_apptstatus = match ($status) {
+                'booked' => '*',
+                'proposed' => '-',
+                'pending' => '^',
+                'cancelled' => 'x',
+                'fulfilled' => '$',
+                'arrived' => '@',
+                'checked-in' => '+',
+                'noshow' => '?',
+                'waitlist' => 'CALL',
+                default => '^',
+            };
+        }
+
+        $comment = $fhirResource->getComment();
+        $pc_hometext = $comment && method_exists($comment, 'getValue') ? (string) $comment->getValue() : '';
+        $description = $fhirResource->getDescription();
+        $pc_title = $description && method_exists($description, 'getValue')
+            ? (string) $description->getValue()
+            : ('Appointment ' . $pc_eventDate);
+
+        if (strlen($pc_title) < 2) {
+            $pc_title = 'Appointment';
+        }
+
+        return [
+            'pid' => $pid,
+            'pc_catid' => $pc_catid,
+            'pc_title' => $pc_title,
+            'pc_duration' => $pc_duration,
+            'pc_hometext' => $pc_hometext,
+            'pc_apptstatus' => $pc_apptstatus,
+            'pc_eventDate' => $pc_eventDate,
+            'pc_startTime' => $pc_startTime,
+            'pc_facility' => $pc_facility,
+            'pc_billing_location' => $pc_billing_location,
+            'pc_aid' => $pc_aid,
+        ];
+    }
+
+    /**
+     * Inserts an OpenEMR record into the system.
+     *
+     * @param array $openEmrRecord OpenEMR appointment record
+     * @return ProcessingResult
+     */
+    protected function insertOpenEMRRecord($openEmrRecord)
+    {
+        $processingResult = new ProcessingResult();
+        $pid = $openEmrRecord['pid'] ?? null;
+        if (empty($pid)) {
+            $processingResult->addValidationMessage('pid', 'Patient is required');
+            return $processingResult;
+        }
+
+        unset($openEmrRecord['pid']);
+        $pc_eid = $this->appointmentService->insert($pid, $openEmrRecord);
+
+        if (empty($pc_eid)) {
+            $processingResult->addInternalError('Failed to insert appointment');
+            return $processingResult;
+        }
+
+        $created = $this->appointmentService->getAppointment($pc_eid);
+        if (!empty($created) && isset($created[0])) {
+            $record = $created[0];
+            $fhirResource = $this->parseOpenEMRRecord($record);
+            $processingResult->addData($fhirResource);
+        }
+
+        return $processingResult;
     }
 }

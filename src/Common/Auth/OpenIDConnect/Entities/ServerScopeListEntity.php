@@ -105,6 +105,7 @@ class ServerScopeListEntity
                 'Patient'
                 , 'Practitioner'
                 , 'Organization'
+                , 'Appointment'
             ];
             $fhirScopes = [];
             $systemEnabled = $this->systemScopesEnabled;
@@ -117,6 +118,9 @@ class ServerScopeListEntity
             }
             foreach ($fhirWriteResources as $resource) {
                 $fhirScopes[] = "user/$resource.write";
+                if ($systemEnabled) {
+                    $fhirScopes[] = "system/$resource.write";
+                }
             }
 
             $fhirScopes[] = 'patient/DocumentReference.$docref';
