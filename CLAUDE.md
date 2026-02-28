@@ -1,4 +1,6 @@
-# OpenEMR Development Guide
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Structure
 
@@ -37,6 +39,15 @@ docker compose up --detach --wait
 - **Login:** `admin` / `pass`
 - **phpMyAdmin:** http://localhost:8310/
 
+### Non-Docker build (production or direct install)
+
+```bash
+composer install --no-dev
+npm install
+npm run build
+composer dump-autoload -o
+```
+
 ## Testing
 
 Tests run inside Docker via devtools. Run from `docker/development-easy/`:
@@ -64,6 +75,13 @@ Isolated tests run on the host without a database or Docker:
 
 ```bash
 composer phpunit-isolated        # Run all isolated tests
+```
+
+### JavaScript tests
+
+```bash
+npm run test:js                  # Run Jest tests
+npm run test:js-coverage         # Run with coverage
 ```
 
 ### Twig template tests
@@ -100,6 +118,7 @@ composer phpstan          # Static analysis
 composer phpcs            # PHP code style check
 composer phpcbf           # PHP code style auto-fix
 composer rector-check     # Code modernization (dry-run)
+composer rector-fix       # Apply code modernization
 
 # JavaScript/CSS
 npm run lint:js           # ESLint check
@@ -114,6 +133,15 @@ npm run build        # Production build
 npm run dev          # Development with file watching
 npm run gulp-build   # Build only (no watch)
 ```
+
+## AI-Generated Code Policy
+
+Per `.github/copilot-instructions.md`, AI-generated code must be clearly marked:
+
+- Add a comment at the beginning and end of AI-generated code blocks.
+- Add an end-of-line comment for single AI-generated lines.
+- Include a note about AI generation for AI-generated documentation or comments.
+- When making significant edits to AI-generated code, indicate the extent of modifications.
 
 ## Coding Standards
 
