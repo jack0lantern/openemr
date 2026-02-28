@@ -6,7 +6,7 @@ dockerfilePath = "Dockerfile.railway"
 
 [deploy]
 # OpenEMR performs first-run DB setup which takes 3-5 minutes
-healthcheckPath = "/meta/health/readyz"
+healthcheckPath = "/meta/health/livez"
 healthcheckTimeout = 600
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3

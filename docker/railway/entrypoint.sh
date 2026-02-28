@@ -8,6 +8,10 @@ set -e
 
 PORT="${PORT:-80}"
 
+# Ensure meta/ health endpoint is always accessible by Apache, regardless of
+# what the base image's openemr.sh does to directory permissions during setup.
+chmod -R 755 /var/www/localhost/htdocs/openemr/meta 2>/dev/null || true
+
 # Patch Apache's listening port if it differs from 80
 if [ "$PORT" != "80" ]; then
     for conf in /etc/apache2/httpd.conf /etc/apache2/ports.conf /etc/apache2/apache2.conf; do
