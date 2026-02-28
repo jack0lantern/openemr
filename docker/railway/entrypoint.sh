@@ -8,6 +8,13 @@ set -e
 
 PORT="${PORT:-80}"
 
+# If the sites directory was mounted as an empty volume (e.g. on Railway),
+# populate it from the pre-packaged swarm-pieces directory before openemr.sh runs.
+if [ ! -f /var/www/localhost/htdocs/openemr/sites/default/sqlconf.php ]; then
+    echo "Sites directory appears empty. Populating from /swarm-pieces/sites..."
+    rsync --owner --group --perms --recursive --links /swarm-pieces/sites/ /var/www/localhost/htdocs/openemr/sites/
+fi
+
 # Ensure meta/ health endpoint is always accessible by Apache, regardless of
 # what the base image's openemr.sh does to directory permissions during setup.
 chown -R apache:root /var/www/localhost/htdocs/openemr/meta 2>/dev/null || true
