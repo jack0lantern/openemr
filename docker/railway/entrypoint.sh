@@ -18,6 +18,7 @@ if [ "$PORT" != "80" ]; then
     for conf in /etc/apache2/httpd.conf /etc/apache2/ports.conf /etc/apache2/apache2.conf; do
         if [ -f "$conf" ]; then
             sed -i "s/^Listen 80$/Listen ${PORT}/" "$conf"
+            sed -i "s/^Listen 0.0.0.0:80$/Listen 0.0.0.0:${PORT}/" "$conf"
         fi
     done
     # Patch any VirtualHost directives that reference port 80
