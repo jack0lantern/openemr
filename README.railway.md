@@ -2,7 +2,9 @@
 
 ## Overview
 
-OpenEMR is deployed as a single service backed by a Railway MySQL database. On first boot, the container auto-provisions the database schema (~3–5 min).
+OpenEMR is deployed as a single service backed by a Railway MySQL database. The deployment mirrors [docker/production/docker-compose.yml](docker/production/docker-compose.yml) (same images, env vars, healthcheck). On first boot, the container auto-provisions the database schema (~3–5 min).
+
+For local testing with the production stack: `docker compose up --detach` (from `openemr/`).
 
 ## Setup
 
@@ -12,7 +14,7 @@ In your Railway project, click **+ New → Database → MySQL**.
 
 ### 2. Deploy the OpenEMR service
 
-Link this repository (or the `openemr/` subdirectory) as a new Railway service. Railway will automatically detect `railway.toml` and build from `Dockerfile.railway`.
+Link this repository (or the `openemr/` subdirectory) as a new Railway service. Railway will automatically detect `railway.toml` and build from `Dockerfile.railway`. The deployment uses the same stack as [docker/production/docker-compose.yml](docker/production/docker-compose.yml); `openemr/docker-compose.yml` includes production for local runs.
 
 ### 3. Set environment variables
 
