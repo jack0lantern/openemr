@@ -7,7 +7,8 @@ COPY docker/railway/entrypoint.sh /railway-entrypoint.sh
 # Fix health check 404: index.php uses REQUEST_URI when pathInfo is empty (Apache .htaccess rewrite)
 COPY --chown=apache:root meta/health/index.php /var/www/localhost/htdocs/openemr/meta/health/index.php
 COPY --chown=apache:root meta/health/.htaccess /var/www/localhost/htdocs/openemr/meta/health/.htaccess
-RUN chmod -R 755 /var/www/localhost/htdocs/openemr/meta
+RUN chown -R apache:root /var/www/localhost/htdocs/openemr/meta && \
+    chmod -R 755 /var/www/localhost/htdocs/openemr/meta
 
 # Copy custom health check classes and regenerate autoloader
 COPY --chown=apache:root src/Health/ /var/www/localhost/htdocs/openemr/src/Health/
