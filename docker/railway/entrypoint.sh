@@ -1,0 +1,23 @@
+#!/bin/sh
+# Railway provides a dynamic PORT env var for HTTP routing.
+# Apache in the OpenEMR base image listens on port 80 by default.
+# This script patches the Apache config to use PORT, then hands off
+# to the original OpenEMR startup script.
+
+set -e
+
+PORT="${PORT:-80}"
+
+# Patch Apache's listening port if it differs from 80
+if [ "$PORT" != "80" ]; then
+    for conf in /etc/apache2/httpd.conf /etc/apache2/ports.conf /etc/apache2/apache2.conf; do
+        if [ -f "$conf" ]; then
+            sed -i "s/^Listen 80$/Listen ${PORT}/" "$conf"
+        fi
+    done
+    # Patch any VirtualHost directives that reference port 80
+    find /etc/apache2 -name "*.conf" -exec sed -i "s/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/g" {} \;
+fi
+
+# Hand off to the original OpenEMR startup script (WORKDIR is /var/www/localhost/htdocs/openemr)
+exec ./openemr.sh

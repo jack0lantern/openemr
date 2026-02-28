@@ -673,7 +673,7 @@ class AuthorizationController
             $this->getClientRepository(),
             $this->getTokenRepository(),
             $scopeRepository,
-            new CryptKey($this->privateKey, $this->passphrase),
+            new CryptKey($this->privateKey, $this->passphrase, false),
             $this->oaEncryptionKey,
             $responseType
         );

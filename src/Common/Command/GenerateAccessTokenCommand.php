@@ -164,7 +164,7 @@ class GenerateAccessTokenCommand extends Command implements IGlobalsAware
 //            $oauth2KeyConfig = new OAuth2KeyConfig();
             $oauth2KeyConfig->configKeyPairs();
             $keyLocation = $oauth2KeyConfig->getPrivateKeyLocation();
-            $privateKey = new CryptKey($keyLocation, $oauth2KeyConfig->getPassPhrase());
+            $privateKey = new CryptKey($keyLocation, $oauth2KeyConfig->getPassPhrase(), false);
             $token->setPrivateKey($privateKey);
             $token->setUserIdentifier($user['uuid']);
             $psrResponse = (new Psr17Factory())->createResponse();
