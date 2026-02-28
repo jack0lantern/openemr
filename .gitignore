@@ -34,3 +34,7 @@ coverage/js-unit
 
 # phpstan
 tmp-phpstan/*
+
+# cursor
+.agents
+skills-lock.json
