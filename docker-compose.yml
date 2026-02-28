@@ -1,7 +1,0 @@
-# Railway and local deployment: uses production stack.
-# Run from openemr/: docker compose up --detach
-# Or drag-and-drop this file into Railway for multi-service deployment.
-#
-# Production compose: docker/production/docker-compose.yml
-include:
-  - docker/production/docker-compose.yml
