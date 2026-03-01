@@ -24,7 +24,12 @@ use Symfony\Component\HttpFoundation\Response;
 $request = Request::createFromGlobals();
 
 try {
+    // pathInfo can be empty when .htaccess rewrites without passing the path (e.g. Apache)
     $pathInfo = $request->getPathInfo();
+    if ($pathInfo === '' || $pathInfo === null) {
+        $uri = $request->server->get('REQUEST_URI', '');
+        $pathInfo = parse_url($uri, PHP_URL_PATH) ?? $uri;
+    }
 
     // Handle /livez - minimal check, just verify PHP is running
     if (str_ends_with($pathInfo, '/livez')) {
