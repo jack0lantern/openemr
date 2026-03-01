@@ -10,15 +10,9 @@
 2. **Create project:** In [Railway](https://railway.app) → New Project → Deploy from GitHub → select `openemr-system`, set **Root Directory** to `openemr`
 3. **Add MySQL:** In project → + New → Database → MySQL
 4. **Configure OpenEMR service** → Variables tab:
-
-   | Variable        | Value                          |
-   |-----------------|--------------------------------|
-   | `MYSQL_HOST`    | `${{MySQL.MYSQLHOST}}`         |
-   | `MYSQL_ROOT_PASS` | `${{MySQL.MYSQLPASSWORD}}`   |
-   | `MYSQL_USER`    | `openemr`                      |
-   | `MYSQL_PASS`    | `${{MySQL.MYSQLPASSWORD}}`     |
-   | `OE_USER`       | `admin`                        |
-   | `OE_PASS`       | *(strong password)*            |
+   - `OE_USER`: `admin`
+   - `OE_PASS`: *(strong password)*
+   *(Database variables like `MYSQLHOST` are mapped automatically).*
 
 5. **Networking:** OpenEMR service → Settings → Generate Domain
 6. **Volumes (optional):** Add mounts for `/var/www/localhost/htdocs/openemr/sites` and `/var/log`
@@ -55,16 +49,14 @@ Link this repository (or the `openemr/` subdirectory) as a new Railway service. 
 
 ### 3. Set environment variables
 
-In the OpenEMR service **Variables** tab, add the following. These map to the docker-compose `openemr` service env vars. Use Railway's reference syntax (`${{MySQL.VAR}}`) so the values stay in sync if the database credentials rotate.
+In the OpenEMR service **Variables** tab, add the following admin credentials:
 
-| Variable          | docker-compose value | Railway value                     | Notes                              |
-|-------------------|----------------------|-----------------------------------|------------------------------------|
-| `MYSQL_HOST`      | `mysql`              | `${{MySQL.MYSQLHOST}}`            | Internal Railway hostname          |
-| `MYSQL_ROOT_PASS` | `root`               | `${{MySQL.MYSQLPASSWORD}}`        | Root password from MySQL service   |
-| `MYSQL_USER`      | `openemr`            | `openemr`                         | App-specific DB user (auto-created)|
-| `MYSQL_PASS`      | `openemr`            | `${{MySQL.MYSQLPASSWORD}}`        | Same password, or set a custom one |
-| `OE_USER`         | `admin`              | `admin`                           | OpenEMR admin login username       |
-| `OE_PASS`         | `pass`               | *(choose a strong password)*      | Make up your own secure password   |
+| Variable          | Default | Notes                              |
+|-------------------|---------|------------------------------------|
+| `OE_USER`         | `admin` | OpenEMR admin login username       |
+| `OE_PASS`         | `pass`  | Make up your own secure password   |
+
+> **Note:** The deployment entrypoint automatically maps Railway's injected MySQL variables (`MYSQLHOST`, `MYSQLPASSWORD`, etc.) to the standard variables OpenEMR expects (`MYSQL_HOST`, `MYSQL_ROOT_PASS`, etc.). You do not need to map the database credentials manually!
 
 > **Security:** Set `OE_PASS` to a strong, unique password before deploying to production. Do not use the default `pass`.
 

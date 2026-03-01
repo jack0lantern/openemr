@@ -5,6 +5,24 @@
 
 set -e
 
+# Map Railway auto-injected MySQL variables to OpenEMR expected variables if missing
+if [ -n "$MYSQLHOST" ] && [ -z "$MYSQL_HOST" ]; then export MYSQL_HOST="$MYSQLHOST"; fi
+if [ -n "$MYSQLPORT" ] && [ -z "$MYSQL_PORT" ]; then export MYSQL_PORT="$MYSQLPORT"; fi
+if [ -n "$MYSQLUSER" ] && [ -z "$MYSQL_USER" ]; then export MYSQL_USER="$MYSQLUSER"; fi
+if [ -n "$MYSQLPASSWORD" ] && [ -z "$MYSQL_PASS" ]; then export MYSQL_PASS="$MYSQLPASSWORD"; fi
+if [ -n "$MYSQLDATABASE" ] && [ -z "$MYSQL_DATABASE" ]; then export MYSQL_DATABASE="$MYSQLDATABASE"; fi
+
+# OpenEMR requires MYSQL_ROOT_PASS to run auto-setup. Railway MySQL exposes 'root' as the default user.
+if [ -z "$MYSQL_ROOT_PASS" ]; then
+    if [ -n "$MYSQLPASSWORD" ]; then
+        export MYSQL_ROOT_PASS="$MYSQLPASSWORD"
+    elif [ -n "$MYSQL_PASS" ]; then
+        export MYSQL_ROOT_PASS="$MYSQL_PASS"
+    else
+        export MYSQL_ROOT_PASS="BLANK"
+    fi
+fi
+
 SITES_DIR="/var/www/localhost/htdocs/openemr/sites"
 DEFAULT_SITE="$SITES_DIR/default"
 SQLCONF="$DEFAULT_SITE/sqlconf.php"
