@@ -188,7 +188,15 @@ class AuthorizationListener implements EventSubscriberInterface
 
         // check access token scopes
         $scopeEntity = ScopeEntity::createFromString($scope);
-        if (!$restRequest->requestHasScopeEntity($scopeEntity)) {
+        $hasScope = $restRequest->requestHasScopeEntity($scopeEntity);
+        // #region agent log
+        if (($event->getResource() ?? '') === 'Appointment') {
+            $logPath = '/Users/jackjiang/GitHub/openemr-system/.cursor/debug-9dec2f.log';
+            $lookupKey = $scopeEntity->getScopeLookupKey();
+            file_put_contents($logPath, json_encode(['sessionId'=>'9dec2f','location'=>'AuthorizationListener.php:onRestApiSecurityCheck','message'=>'Appointment scope validation','data'=>['scope'=>$scope,'hasScope'=>$hasScope,'lookupKey'=>$lookupKey,'scopeType'=>$scopeType,'resource'=>$event->getResource(),'permission'=>$event->getPermission()],'timestamp'=>time()*1000,'hypothesisId'=>'B,D']) . "\n", FILE_APPEND | LOCK_EX);
+        }
+        // #endregion
+        if (!$hasScope) {
             throw new AccessDeniedException($scopeType, $restRequest->getResource() ?? '', "scope " . $scope . " not in access token");
         }
         $this->updateRequestWithConstraints($request, $scopeEntity);

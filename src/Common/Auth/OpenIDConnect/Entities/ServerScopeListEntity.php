@@ -102,7 +102,8 @@ class ServerScopeListEntity
                 'OperationDefinition',
             ];
             $fhirWriteResources = [
-                'Patient'
+                'Appointment'
+                , 'Patient'
                 , 'Practitioner'
                 , 'Organization'
                 , 'Appointment'

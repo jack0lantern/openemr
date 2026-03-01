@@ -13,6 +13,7 @@ namespace OpenEMR\RestControllers\FHIR;
 
 use OpenApi\Attributes as OA;
 use OpenEMR\Common\Http\HttpRestRequest;
+use OpenEMR\FHIR\R4\FHIRDomainResource\FHIRAppointment;
 use OpenEMR\FHIR\R4\FHIRResource\FHIRBundle\FHIRBundleEntry;
 use OpenEMR\RestControllers\RestControllerHelper;
 use OpenEMR\Services\FHIR\FhirAppointmentService;
@@ -170,13 +171,13 @@ class FhirAppointmentRestController
     }
 
     /**
-     * Creates a new FHIR Appointment resource.
-     * @param array $fhirJson The FHIR Appointment resource
-     * @returns 201 if the resource is created, 400 if the resource is invalid
+     * Creates a FHIR appointment resource.
+     * @param array $fhirJson The FHIR appointment resource payload.
+     * @return \Symfony\Component\HttpFoundation\Response
      */
     #[OA\Post(
         path: '/fhir/Appointment',
-        description: 'Adds an Appointment resource.',
+        description: 'Creates an Appointment resource.',
         tags: ['fhir'],
         requestBody: new OA\RequestBody(
             required: true,
@@ -189,37 +190,33 @@ class FhirAppointmentRestController
             )
         ),
         responses: [
-            new OA\Response(
-                response: '201',
-                description: 'Resource created',
-                content: new OA\MediaType(
-                    mediaType: 'application/json',
-                    schema: new OA\Schema(
-                        properties: [
-                            new OA\Property(
-                                property: 'json object',
-                                description: 'FHIR Json object.',
-                                type: 'object'
-                            ),
-                        ]
-                    )
-                )
-            ),
+            new OA\Response(response: '201', description: 'Resource created'),
             new OA\Response(response: '400', ref: '#/components/responses/badrequest'),
             new OA\Response(response: '401', ref: '#/components/responses/unauthorized'),
         ],
         security: [['openemr_auth' => []]]
     )]
-    public function post($fhirJson)
+    public function post(array $fhirJson)
     {
-        $fhirValidate = $this->fhirValidate->validate($fhirJson);
-        if (!empty($fhirValidate)) {
-            return RestControllerHelper::responseHandler($fhirValidate, null, 400);
+        if (($fhirJson['resourceType'] ?? '') !== 'Appointment') {
+            return RestControllerHelper::responseHandler(
+                ['error' => 'Invalid resourceType; expected Appointment'],
+                null,
+                400
+            );
         }
 
-        $object = FhirAppointmentSerializer::deserialize($fhirJson);
+        try {
+            $fhirAppointment = new FHIRAppointment($fhirJson);
+        } catch (\Throwable $exception) {
+            return RestControllerHelper::responseHandler(
+                ['error' => 'Invalid Appointment payload', 'details' => $exception->getMessage()],
+                null,
+                400
+            );
+        }
 
-        $processingResult = $this->fhirAppointmentService->insert($object);
+        $processingResult = $this->fhirAppointmentService->insert($fhirAppointment);
         return RestControllerHelper::handleFhirProcessingResult($processingResult, 201);
     }
 }

@@ -191,7 +191,6 @@ class CustomClientCredentialsGrant extends ClientCredentialsGrant
         // skip everything else for now.
         [$clientId] = $this->getClientCredentials($request);
 
-
         // grab the client
         $client = $this->getClientEntityOrFail($clientId, $request);
 

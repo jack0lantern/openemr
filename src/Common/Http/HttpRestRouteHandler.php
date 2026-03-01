@@ -59,6 +59,12 @@ class HttpRestRouteHandler
             foreach ($routes as $routePath => $routeCallback) {
                 $parsedRoute = new HttpRestParsedRoute($dispatchRestRequestMethod, $dispatchRestRequestPath, $routePath);
                 if ($parsedRoute->isValid()) {
+                    // #region agent log
+                    if (($parsedRoute->getResource() ?? '') === 'Appointment') {
+                        $logPath = '/Users/jackjiang/GitHub/openemr-system/.cursor/debug-9dec2f.log';
+                        file_put_contents($logPath, json_encode(['sessionId'=>'9dec2f','location'=>'HttpRestRouteHandler.php:61','message'=>'Appointment route matched','data'=>['routePath'=>$routePath,'resource'=>$parsedRoute->getResource(),'method'=>$dispatchRestRequest->getMethod(),'requestPath'=>$dispatchRestRequestPath],'timestamp'=>time()*1000,'hypothesisId'=>'A']) . "\n", FILE_APPEND | LOCK_EX);
+                    }
+                    // #endregion
                     // if our requested resource is a patient context ie patient/<resource>.<permission> then
                     // we want to mark the request as a patient request and make sure we restrict requests
                     // TODO: @adunsulag this will have problems if there are multiple scope contexts for a resource,
@@ -95,6 +101,12 @@ class HttpRestRouteHandler
                     return null; // return null to let the kernel handle the response
                 }
             }
+            // #region agent log
+            if (str_contains($dispatchRestRequestPath ?? '', 'Appointment')) {
+                $logPath = '/Users/jackjiang/GitHub/openemr-system/.cursor/debug-9dec2f.log';
+                file_put_contents($logPath, json_encode(['sessionId'=>'9dec2f','location'=>'HttpRestRouteHandler.php:noMatch','message'=>'Appointment path but no route matched','data'=>['requestPath'=>$dispatchRestRequestPath,'method'=>$dispatchRestRequestMethod,'routeCount'=>count($routes)],'timestamp'=>time()*1000,'hypothesisId'=>'A']) . "\n", FILE_APPEND | LOCK_EX);
+            }
+            // #endregion
             throw new HttpException(Response::HTTP_NOT_FOUND, "Route not found");
         } catch (AccessDeniedException $exception) {
             // TODO: @adunsulag do we want to just let this exception bubble up and let the kernel handle it?
@@ -178,6 +190,13 @@ class HttpRestRouteHandler
         $restApiSecurityCheckEvent->setScopeType($scopeType);
         $restApiSecurityCheckEvent->setResource($resource);
         $restApiSecurityCheckEvent->setPermission($permission);
+        // #region agent log
+        if ($resource === 'Appointment') {
+            $scope = $scopeType . '/' . $resource . '.' . $permission;
+            $logPath = '/Users/jackjiang/GitHub/openemr-system/.cursor/debug-9dec2f.log';
+            file_put_contents($logPath, json_encode(['sessionId'=>'9dec2f','location'=>'HttpRestRouteHandler.php:checkSecurity','message'=>'Appointment scope check','data'=>['scopeType'=>$scopeType,'resource'=>$resource,'permission'=>$permission,'scope'=>$scope,'userRole'=>$restRequest->getRequestUserRole()],'timestamp'=>time()*1000,'hypothesisId'=>'B,C']) . "\n", FILE_APPEND | LOCK_EX);
+        }
+        // #endregion
         // preferred approach is to throw an AccessDeniedException if the security check fails
         // however, we also allow for a response to be set on the event for custom security message rendering
         $checkedRestApiSecurityCheckEvent = $kernel->getEventDispatcher()->dispatch($restApiSecurityCheckEvent, RestApiSecurityCheckEvent::EVENT_HANDLE);

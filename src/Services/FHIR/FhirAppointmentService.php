@@ -14,6 +14,7 @@ namespace OpenEMR\Services\FHIR;
 use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\FHIR\R4\FHIRDomainResource\FHIRAppointment;
+use OpenEMR\FHIR\R4\FHIRResource\FHIRDomainResource;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRAppointmentStatus;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRCodeableConcept;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRCoding;
@@ -24,6 +25,7 @@ use OpenEMR\FHIR\R4\FHIRElement\FHIRParticipationStatus;
 use OpenEMR\FHIR\R4\FHIRResource\FHIRAppointment\FHIRAppointmentParticipant;
 use OpenEMR\FHIR\R4\FHIRResource\FHIRDomainResource;
 use OpenEMR\Services\AppointmentService;
+use OpenEMR\Services\BaseService;
 use OpenEMR\Services\FHIR\Traits\BulkExportSupportAllOperationsTrait;
 use OpenEMR\Services\FHIR\Traits\FhirBulkExportDomainResourceTrait;
 use OpenEMR\Services\FHIR\Traits\FhirServiceBaseEmptyTrait;
@@ -260,6 +262,206 @@ class FhirAppointmentService extends FhirServiceBase implements IPatientCompartm
         }
 
         return $appt;
+    }
+
+    /**
+     * Parses a FHIR Appointment Resource, returning the equivalent OpenEMR appointment record.
+     *
+     * @param FHIRDomainResource $fhirResource The source FHIR resource
+     * @return array a mapped OpenEMR data record (array)
+     */
+    public function parseFhirResource(FHIRDomainResource $fhirResource)
+    {
+        if (!$fhirResource instanceof FHIRAppointment) {
+            throw new \BadMethodCallException("fhir resource must be of type " . FHIRAppointment::class);
+        }
+
+        $patientUuid = null;
+        $providerUuid = null;
+        $locationUuid = null;
+
+        foreach ($fhirResource->getParticipant() ?? [] as $participant) {
+            $reference = (string)($participant->getActor()?->getReference() ?? '');
+            if (empty($reference) || strpos($reference, '/') === false) {
+                continue;
+            }
+            [$resourceType, $resourceId] = explode('/', $reference, 2);
+            if ($resourceType === 'Patient') {
+                $patientUuid = $resourceId;
+            } elseif ($resourceType === 'Practitioner' || $resourceType === 'Person') {
+                $providerUuid = $resourceId;
+            } elseif ($resourceType === 'Location') {
+                $locationUuid = $resourceId;
+            }
+        }
+
+        if (empty($patientUuid)) {
+            throw new \InvalidArgumentException("Patient participant is required");
+        }
+
+        $pid = $this->resolvePatientPid($patientUuid);
+        if (empty($pid)) {
+            throw new \InvalidArgumentException("Could not resolve patient for reference: Patient/" . $patientUuid);
+        }
+
+        $start = (string)$fhirResource->getStart();
+        if (empty($start)) {
+            throw new \InvalidArgumentException("Appointment.start is required");
+        }
+        $startDateTime = new \DateTimeImmutable($start);
+
+        $minutesDurationValue = (string)$fhirResource->getMinutesDuration();
+        $minutes = !empty($minutesDurationValue) ? (int)$minutesDurationValue : 0;
+        if ($minutes <= 0) {
+            $end = (string)$fhirResource->getEnd();
+            if (!empty($end)) {
+                $endDateTime = new \DateTimeImmutable($end);
+                $minutes = (int)floor(($endDateTime->getTimestamp() - $startDateTime->getTimestamp()) / 60);
+            }
+        }
+        if ($minutes <= 0) {
+            throw new \InvalidArgumentException("Appointment.minutesDuration or Appointment.end is required");
+        }
+
+        $appointmentTypeCode = null;
+        $appointmentTypeDisplay = null;
+        $appointmentType = $fhirResource->getAppointmentType();
+        if (!empty($appointmentType)) {
+            foreach ($appointmentType->getCoding() ?? [] as $coding) {
+                $code = (string)$coding->getCode();
+                if (!empty($code)) {
+                    $appointmentTypeCode = $code;
+                    $appointmentTypeDisplay = (string)$coding->getDisplay();
+                    break;
+                }
+            }
+            if (empty($appointmentTypeDisplay)) {
+                $appointmentTypeDisplay = (string)$appointmentType->getText();
+            }
+        }
+
+        $pcCatId = $this->resolveCategoryId($appointmentTypeCode);
+        $pcFacility = !empty($locationUuid) ? $this->resolveFacilityIdFromLocation($locationUuid) : false;
+        if (empty($pcFacility)) {
+            $pcFacility = $this->resolveDefaultFacilityId();
+        }
+        if (empty($pcFacility)) {
+            throw new \InvalidArgumentException("Could not resolve appointment facility");
+        }
+
+        $pcAid = null;
+        if (!empty($providerUuid)) {
+            $providerId = $this->resolveProviderId($providerUuid);
+            $pcAid = !empty($providerId) ? (int)$providerId : null;
+        }
+
+        return [
+            'pid' => (int)$pid,
+            'pc_catid' => (int)$pcCatId,
+            'pc_title' => !empty($appointmentTypeDisplay) ? $appointmentTypeDisplay : 'Office Visit',
+            'pc_duration' => $minutes * 60,
+            'pc_hometext' => (string)($fhirResource->getComment() ?? ''),
+            'pc_apptstatus' => $this->mapFhirStatusToOpenEMRStatus((string)$fhirResource->getStatus()),
+            'pc_eventDate' => $startDateTime->format('Y-m-d'),
+            'pc_startTime' => $startDateTime->format('H:i'),
+            'pc_facility' => (int)$pcFacility,
+            'pc_billing_location' => (int)$pcFacility,
+            'pc_aid' => $pcAid,
+        ];
+    }
+
+    /**
+     * Inserts an OpenEMR record into the system.
+     *
+     * @param array $openEmrRecord OpenEMR appointment record
+     * @return ProcessingResult
+     */
+    public function insertOpenEMRRecord($openEmrRecord)
+    {
+        $processingResult = new ProcessingResult();
+        $pid = $openEmrRecord['pid'] ?? null;
+        if (empty($pid)) {
+            $processingResult->addInternalError("Missing patient id for appointment insert");
+            return $processingResult;
+        }
+
+        $data = $openEmrRecord;
+        unset($data['pid']);
+        $insertId = $this->appointmentService->insert($pid, $data);
+        if (empty($insertId)) {
+            $processingResult->addInternalError("Failed to create appointment");
+            return $processingResult;
+        }
+
+        $records = $this->appointmentService->getAppointment($insertId);
+        if (!empty($records[0])) {
+            $processingResult->addData($this->parseOpenEMRRecord($records[0]));
+        }
+
+        return $processingResult;
+    }
+
+    protected function mapFhirStatusToOpenEMRStatus(string $status): string
+    {
+        return match ($status) {
+            'proposed' => '-',
+            'pending' => '^',
+            'fulfilled' => '>',
+            'cancelled' => 'x',
+            'noshow' => '?',
+            'arrived' => '@',
+            'checked-in' => '<',
+            'waitlist' => 'CALL',
+            default => '*',
+        };
+    }
+
+    protected function resolvePatientPid(string $patientUuid)
+    {
+        return (new PatientService())->getPidByUuid(UuidRegistry::uuidToBytes($patientUuid));
+    }
+
+    protected function resolveProviderId(string $providerUuid)
+    {
+        return BaseService::getIdByUuid(UuidRegistry::uuidToBytes($providerUuid), 'users', 'id');
+    }
+
+    protected function resolveFacilityIdFromLocation(string $locationUuid)
+    {
+        $locationBytes = UuidRegistry::uuidToBytes($locationUuid);
+        $facilityUuid = QueryUtils::fetchSingleValue(
+            "SELECT facility.uuid
+               FROM uuid_mapping
+               JOIN facility ON facility.uuid = uuid_mapping.target_uuid
+              WHERE uuid_mapping.resource = 'Location'
+                AND uuid_mapping.uuid = ?",
+            'uuid',
+            [$locationBytes]
+        );
+        if (empty($facilityUuid)) {
+            return false;
+        }
+        return BaseService::getIdByUuid($facilityUuid, 'facility', 'id');
+    }
+
+    protected function resolveDefaultFacilityId()
+    {
+        return QueryUtils::fetchSingleValue("SELECT id FROM facility ORDER BY id ASC LIMIT 1", 'id', []);
+    }
+
+    protected function resolveCategoryId(?string $appointmentTypeCode)
+    {
+        if (!empty($appointmentTypeCode)) {
+            $categoryId = QueryUtils::fetchSingleValue(
+                "SELECT pc_catid FROM openemr_postcalendar_categories WHERE pc_constant_id = ?",
+                'pc_catid',
+                [$appointmentTypeCode]
+            );
+            if (!empty($categoryId)) {
+                return (int)$categoryId;
+            }
+        }
+        return 5;
     }
 
 
