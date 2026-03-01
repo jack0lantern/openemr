@@ -8,10 +8,11 @@ set -e
 SITES_DIR="/var/www/localhost/htdocs/openemr/sites"
 DEFAULT_SITE="$SITES_DIR/default"
 SQLCONF="$DEFAULT_SITE/sqlconf.php"
+CONFIG_PHP="$DEFAULT_SITE/config.php"
 
-# Populate sites from swarm-pieces if sqlconf.php is missing (empty volume on first deploy)
-if [ ! -f "$SQLCONF" ]; then
-    echo "Sites directory appears empty. Populating from /swarm-pieces/sites..."
+# Populate sites from swarm-pieces if required site config files are missing
+if [ ! -f "$SQLCONF" ] || [ ! -f "$CONFIG_PHP" ]; then
+    echo "Required site config files are missing. Populating from /swarm-pieces/sites..."
     if [ -d /swarm-pieces/sites ]; then
         cp -a /swarm-pieces/sites/. "$SITES_DIR/"
     else
