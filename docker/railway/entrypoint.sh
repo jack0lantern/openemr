@@ -11,7 +11,9 @@ SQLCONF="$DEFAULT_SITE/sqlconf.php"
 # Populate sites from swarm-pieces if sqlconf.php is missing (empty volume on first deploy)
 if [ ! -f "$SQLCONF" ]; then
     echo "Sites directory appears empty. Populating from /swarm-pieces/sites..."
-    mkdir -p "$DEFAULT_SITE"
+    mkdir -p "$DEFAULT_SITE/documents"
+    mkdir -p "$DEFAULT_SITE/images"
+    mkdir -p "$DEFAULT_SITE/LBF"
     if [ -f /swarm-pieces/sites/default/sqlconf.php ]; then
         cp -a /swarm-pieces/sites/default/sqlconf.php "$SQLCONF"
     elif [ -f /railway-sqlconf-template.php ]; then
