@@ -6,9 +6,9 @@ FROM openemr/openemr:7.0.4
 # is hardcoded to port 80, so the entrypoint script reconfigures it at startup.
 COPY docker/railway/entrypoint.sh /railway-entrypoint.sh
 
-# Ensure sites/default/sqlconf.php exists before openemr.sh runs
-# (fixes "Failed to open stream" when the sites volume is empty on first deploy)
-COPY sites/default/sqlconf.php /railway-sqlconf-template.php
+# Ensure sites volume is populated if empty on first deploy
+# (fixes "Failed to open stream" and missing config.php on Railway volumes)
+# The entrypoint will copy from /swarm-pieces/sites which is part of the base image
 
 # Fix health check 404: index.php uses REQUEST_URI when pathInfo is empty (Apache .htaccess rewrite)
 COPY --chown=apache:root meta/health/index.php /var/www/localhost/htdocs/openemr/meta/health/index.php
