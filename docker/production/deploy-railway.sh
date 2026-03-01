@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy OpenEMR to Railway using docker-compose
+# Deploy OpenEMR and MariaDB to Railway via CLI
 # Prerequisites: railway login, project linked to openemr-system/ directory
 
 set -e
@@ -19,9 +19,39 @@ if ! railway whoami &>/dev/null; then
   exit 1
 fi
 
-echo "Make sure you have run 'railway link' to connect to your project."
-echo "Deploying using Railway Up..."
+echo "Ensuring project is linked..."
+if ! railway status &>/dev/null; then
+  echo "No linked project found. Please run 'railway link' first."
+  exit 1
+fi
 
+echo "--- Deploying MariaDB ---"
+# Add mariadb service if it doesn't exist
+if ! railway service list | grep -q "mariadb"; then
+  echo "Provisioning mariadb:11.8..."
+  railway add --service mariadb --image mariadb:11.8 \
+    -v MYSQL_ROOT_PASSWORD=root \
+    -v MYSQL_DATABASE=openemr \
+    -v MYSQL_USER=openemr \
+    -v MYSQL_PASSWORD=openemr
+else
+  echo "MariaDB service already exists."
+fi
+
+echo "--- Deploying OpenEMR ---"
+# Configure variables to connect to mariadb
+echo "Configuring OpenEMR variables..."
+railway variable set --skip-deploys \
+  MYSQL_HOST=\${{mariadb.RAILWAY_PRIVATE_DOMAIN}} \
+  MYSQL_ROOT_PASS=root \
+  MYSQL_USER=openemr \
+  MYSQL_PASS=openemr \
+  MYSQL_PORT=3306 \
+  OE_USER=admin \
+  OE_PASS=pass \
+  || true
+
+echo "Triggering OpenEMR deployment..."
 railway up -d
 
 echo "Deployment triggered. First boot takes 3-5 min for DB setup."
