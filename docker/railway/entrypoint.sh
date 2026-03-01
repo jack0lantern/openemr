@@ -11,9 +11,6 @@ SQLCONF="$DEFAULT_SITE/sqlconf.php"
 # Populate sites from swarm-pieces if sqlconf.php is missing (empty volume on first deploy)
 if [ ! -f "$SQLCONF" ]; then
     echo "Sites directory appears empty. Populating from /swarm-pieces/sites..."
-    mkdir -p "$DEFAULT_SITE/documents"
-    mkdir -p "$DEFAULT_SITE/images"
-    mkdir -p "$DEFAULT_SITE/LBF"
     if [ -f /swarm-pieces/sites/default/sqlconf.php ]; then
         cp -a /swarm-pieces/sites/default/sqlconf.php "$SQLCONF"
     elif [ -f /railway-sqlconf-template.php ]; then
@@ -57,6 +54,12 @@ if [ "$PORT" != "80" ]; then
     done
     find /etc/apache2 -name "*.conf" -exec sed -i "s/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/g" {} \;
 fi
+
+# Ensure required directories exist (repairs existing volumes from previous failed deploys)
+mkdir -p "$DEFAULT_SITE/documents"
+mkdir -p "$DEFAULT_SITE/images"
+mkdir -p "$DEFAULT_SITE/LBF"
+chown -R apache:root "$SITES_DIR" 2>/dev/null || true
 
 cd /var/www/localhost/htdocs/openemr
 exec ./openemr.sh
