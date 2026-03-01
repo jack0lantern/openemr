@@ -2,12 +2,17 @@
 # Deploy OpenEMR to Railway following docker/production/docker-compose.yml
 # Prerequisites: railway login, project linked to openemr/ directory
 #
-# Manual steps first (Railway dashboard):
-# 1. + New → Database → MySQL
-# 2. + New → GitHub Repo → select openemr-system, root: openemr/
-# 3. Set OpenEMR env vars (see README.railway.md)
-# 4. Add volumes: /var/www/localhost/htdocs/openemr/sites, /var/log
-# 5. Enable Public Domain on OpenEMR service
+# Option A - Docker Compose import (mirrors production: MariaDB + OpenEMR):
+#   1. Drag docker/production/docker-compose.railway.yml onto Railway project canvas
+#   2. Add volumes: mysql -> /var/lib/mysql, openemr -> sites + /var/log
+#   3. Enable Public Domain on OpenEMR service
+#
+# Option B - Manual (Railway MySQL + OpenEMR):
+#   1. + New → Database → MySQL
+#   2. + New → GitHub Repo → select openemr-system, root: openemr/
+#   3. Set OpenEMR env vars (see README.railway.md)
+#   4. Add volumes: /var/www/localhost/htdocs/openemr/sites, /var/log
+#   5. Enable Public Domain on OpenEMR service
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

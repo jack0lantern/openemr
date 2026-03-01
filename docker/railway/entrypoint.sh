@@ -1,6 +1,7 @@
 #!/bin/sh
 # Railway entrypoint: ensure sites/default/sqlconf.php exists before openemr.sh runs.
 # Fixes "Failed to open stream: No such file or directory" when volume is empty on first deploy.
+# Waits for MySQL when MYSQL_HOST is remote (mirrors docker-compose depends_on: service_healthy).
 
 set -e
 
@@ -60,6 +61,33 @@ mkdir -p "$DEFAULT_SITE/documents"
 mkdir -p "$DEFAULT_SITE/images"
 mkdir -p "$DEFAULT_SITE/LBF"
 chown -R apache:root "$SITES_DIR" 2>/dev/null || true
+
+# Wait for MySQL when using remote host (mirrors docker-compose depends_on: service_healthy)
+export MYSQL_HOST="${MYSQL_HOST:-localhost}"
+export MYSQL_PORT="${MYSQL_PORT:-3306}"
+if [ "$MYSQL_HOST" != "localhost" ] && [ "$MYSQL_HOST" != "127.0.0.1" ]; then
+    echo "Waiting for MySQL at $MYSQL_HOST:$MYSQL_PORT..."
+    max_attempts=90
+    attempt=0
+    while [ $attempt -lt $max_attempts ]; do
+        if php -r "
+            \$h = getenv('MYSQL_HOST') ?: 'localhost';
+            \$p = (int)(getenv('MYSQL_PORT') ?: 3306);
+            \$s = @fsockopen(\$h, \$p, \$err, \$errstr, 2);
+            if (\$s) { fclose(\$s); exit(0); }
+            exit(1);
+        " 2>/dev/null; then
+            echo "MySQL is ready."
+            break
+        fi
+        attempt=$((attempt + 1))
+        if [ $attempt -ge $max_attempts ]; then
+            echo "Timeout waiting for MySQL after ${max_attempts} attempts."
+            exit 1
+        fi
+        sleep 2
+    done
+fi
 
 cd /var/www/localhost/htdocs/openemr
 exec ./openemr.sh

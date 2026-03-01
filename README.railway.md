@@ -2,6 +2,10 @@
 
 ## Quick deploy (one-time setup)
 
+**Option A – Docker Compose (mirrors production):** Drag `docker/production/docker-compose.railway.yml` onto your Railway project canvas. Add volumes and domain as noted in "Docker Compose import" below.
+
+**Option B – Manual setup:**
+
 1. **Login:** `railway login`
 2. **Create project:** In [Railway](https://railway.app) → New Project → Deploy from GitHub → select `openemr-system`, set **Root Directory** to `openemr`
 3. **Add MySQL:** In project → + New → Database → MySQL
@@ -29,10 +33,15 @@ This deployment mirrors the setup in `docker/production/docker-compose.yml`:
 
 | Docker Compose | Railway |
 |----------------|---------|
-| `mysql` (mariadb:11.8) | **+ New → Database → MySQL** |
+| `mysql` (mariadb:11.8) | **Option A:** MariaDB service from `docker-compose.railway.yml` (same image, utf8mb4, healthcheck) |
+| | **Option B:** + New → Database → MySQL |
 | `openemr` (openemr/openemr:7.0.4) | Service built from `Dockerfile.railway` |
 
-OpenEMR is deployed as a single service backed by a Railway MySQL database. On first boot, the container auto-provisions the database schema (~3–5 min).
+**Option A (recommended):** Drag `docker/production/docker-compose.railway.yml` onto your Railway project canvas to import both MariaDB and OpenEMR services—matching production exactly (mariadb:11.8, utf8mb4 charset, healthcheck, same env vars). The entrypoint waits for MySQL to be ready before starting OpenEMR.
+
+**Option B:** Use Railway's managed MySQL. OpenEMR is deployed as a single service backed by a Railway MySQL database.
+
+On first boot, the container auto-provisions the database schema (~3–5 min).
 
 ## Setup
 
@@ -107,13 +116,18 @@ Railway volumes preserve data across deploys. Attach volumes to the OpenEMR serv
 | `/var/www/localhost/htdocs/openemr/sites`      | `sitevolume`           | Patient files, config       |
 | `/var/log`                                    | `logvolume01`          | Application logs            |
 
-## Alternative: Docker Compose import
+## Docker Compose import (Option A)
 
-Railway supports importing services from a Docker Compose file. Drag and drop `docker/production/docker-compose.yml` onto your [Railway project canvas](https://docs.railway.app/overview/the-basics#project--project-canvas) to auto-import services. You will still need to:
+To mirror production exactly (MariaDB 11.8 + OpenEMR with same config), drag and drop `docker/production/docker-compose.railway.yml` onto your [Railway project canvas](https://docs.railway.app/overview/the-basics#project--project-canvas). This imports both services with:
 
-1. Replace the `mysql` service with Railway's **+ New → Database → MySQL** (Railway manages MySQL separately)
-2. Point the OpenEMR service's `MYSQL_HOST` to the Railway MySQL hostname
-3. Configure environment variables as in step 3 above
+- **mysql:** mariadb:11.8, utf8mb4 charset, same healthcheck as production
+- **openemr:** Built from `Dockerfile.railway`, waits for MySQL before starting
+
+After import:
+
+1. Set OpenEMR service Root Directory to `openemr` and `RAILWAY_DOCKERFILE_PATH` to `Dockerfile.railway` (if not auto-detected)
+2. Add volumes: mysql → `/var/lib/mysql`, openemr → `/var/www/localhost/htdocs/openemr/sites` and `/var/log`
+3. Generate a domain on the OpenEMR service
 
 ## Environment variable reference
 
