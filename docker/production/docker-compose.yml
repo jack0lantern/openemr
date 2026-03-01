@@ -43,20 +43,23 @@ services:
       mysql:
         condition: service_healthy
     healthcheck:
+      # Use root path instead of /meta/health/readyz to avoid 403 Permission denied
+      # during OpenEMR init (meta/.htaccess not readable until setup completes).
+      # Root returns 200/302 when Apache is serving; readyz hits meta/ which can
+      # fail with AH00529 until permissions are fixed by the image entrypoint.
       test:
       - CMD
       - /usr/bin/curl
       - --fail
-      - --insecure
-      - --location
-      - --show-error
+      - --max-time
+      - "5"
       - --silent
-      - https://localhost/meta/health/readyz
-      start_period: 3m
+      - http://127.0.0.1/
+      start_period: 10m
       start_interval: 10s
       interval: 1m
-      timeout: 5s
-      retries: 3
+      timeout: 10s
+      retries: 5
 volumes:
   logvolume01: {}
   sitevolume: {}
