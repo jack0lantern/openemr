@@ -736,7 +736,7 @@ function &postcalendar_userapi_pcQueryEventsFA($args)
         $events[$i]['recurrfreq']  = $tmp['recurrfreq'];
         $events[$i]['recurrspec']  = $tmp['recurrspec'];
 
-        $rspecs = unserialize($tmp['recurrspec'], ['allowed_classes' => false]);
+        $rspecs = unserialize((string) ($tmp['recurrspec'] ?? ''), ['allowed_classes' => false]) ?: [];
         $events[$i]['event_repeat_freq'] = $rspecs['event_repeat_freq'];
         $events[$i]['event_repeat_freq_type'] = $rspecs['event_repeat_freq_type'];
         $events[$i]['event_repeat_on_num'] = $rspecs['event_repeat_on_num'];
@@ -802,13 +802,13 @@ function &postcalendar_userapi_pcQueryEventsFA($args)
                 $events[$i]['contemail']   = $prepFunction($tmp['contemail']);
                 $events[$i]['website']     = $prepFunction(postcalendar_makeValidURL($tmp['website']));
                 $events[$i]['fee']         = $prepFunction($tmp['fee']);
-                $loc = unserialize($tmp['location'], ['allowed_classes' => false]);
-                $events[$i]['location']   = $prepFunction($loc['event_location']);
-                $events[$i]['street1']    = $prepFunction($loc['event_street1']);
-                $events[$i]['street2']    = $prepFunction($loc['event_street2']);
-                $events[$i]['city']       = $prepFunction($loc['event_city']);
-                $events[$i]['state']      = $prepFunction($loc['event_state']);
-                $events[$i]['postal']     = $prepFunction($loc['event_postal']);
+                $loc = unserialize((string) ($tmp['location'] ?? ''), ['allowed_classes' => false]) ?: [];
+                $events[$i]['location']   = $prepFunction($loc['event_location'] ?? null);
+                $events[$i]['street1']    = $prepFunction($loc['event_street1'] ?? null);
+                $events[$i]['street2']    = $prepFunction($loc['event_street2'] ?? null);
+                $events[$i]['city']       = $prepFunction($loc['event_city'] ?? null);
+                $events[$i]['state']      = $prepFunction($loc['event_state'] ?? null);
+                $events[$i]['postal']     = $prepFunction($loc['event_postal'] ?? null);
         }
 
         $i++;
@@ -1151,13 +1151,13 @@ function &postcalendar_userapi_pcQueryEvents($args)
                 $events[$i]['contemail']   = $prepFunction($tmp['contemail']);
                 $events[$i]['website']     = $prepFunction(postcalendar_makeValidURL($tmp['website']));
                 $events[$i]['fee']         = $prepFunction($tmp['fee']);
-                $loc = unserialize($tmp['location'], ['allowed_classes' => false]);
-                $events[$i]['location']   = $prepFunction($loc['event_location']);
-                $events[$i]['street1']    = $prepFunction($loc['event_street1']);
-                $events[$i]['street2']    = $prepFunction($loc['event_street2']);
-                $events[$i]['city']       = $prepFunction($loc['event_city']);
-                $events[$i]['state']      = $prepFunction($loc['event_state']);
-                $events[$i]['postal']     = $prepFunction($loc['event_postal']);
+                $loc = unserialize((string) ($tmp['location'] ?? ''), ['allowed_classes' => false]) ?: [];
+                $events[$i]['location']   = $prepFunction($loc['event_location'] ?? null);
+                $events[$i]['street1']    = $prepFunction($loc['event_street1'] ?? null);
+                $events[$i]['street2']    = $prepFunction($loc['event_street2'] ?? null);
+                $events[$i]['city']       = $prepFunction($loc['event_city'] ?? null);
+                $events[$i]['state']      = $prepFunction($loc['event_state'] ?? null);
+                $events[$i]['postal']     = $prepFunction($loc['event_postal'] ?? null);
         }
 
         $events[$i]['gid']          = $tmp['gid'];
@@ -1366,7 +1366,7 @@ function calculateEvents($days, $events, $viewtype)
                 $stop = $last_date > $event['endDate'] ? $event['endDate'] : $last_date;
 
                 [$esY, $esM, $esD] = explode('-', (string) $event['eventDate']);
-                $event_recurrspec = @unserialize($event['recurrspec'], ['allowed_classes' => false]);
+                $event_recurrspec = unserialize((string) ($event['recurrspec'] ?? ''), ['allowed_classes' => false]) ?: [];
 
                 if (checkEvent($event['recurrtype'], $event_recurrspec)) {
                     break;
@@ -1433,7 +1433,7 @@ function calculateEvents($days, $events, $viewtype)
                 $stop = $last_date > $event['endDate'] ? $event['endDate'] : $last_date;
 
                 [$esY, $esM, $esD] = explode('-', (string) $event['eventDate']);
-                $event_recurrspec = @unserialize($event['recurrspec'], ['allowed_classes' => false]);
+                $event_recurrspec = unserialize((string) ($event['recurrspec'] ?? ''), ['allowed_classes' => false]) ?: [];
 
                 if (checkEvent($event['recurrtype'], $event_recurrspec)) {
                     break;
