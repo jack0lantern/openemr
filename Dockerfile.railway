@@ -2,10 +2,24 @@
 # Uses same image and env vars; MySQL is provided by Railway's MySQL database service
 FROM openemr/openemr:7.0.4
 
-# Railway injects PORT; ensure sites/default/sqlconf.php exists before openemr.sh runs
-# (fixes "Failed to open stream" when volume is empty on first deploy)
-COPY sites/default/sqlconf.php /railway-sqlconf-template.php
+# Railway injects a PORT env var for HTTP routing. Apache in the base image
+# is hardcoded to port 80, so the entrypoint script reconfigures it at startup.
 COPY docker/railway/entrypoint.sh /railway-entrypoint.sh
+
+# Ensure sites/default/sqlconf.php exists before openemr.sh runs
+# (fixes "Failed to open stream" when the sites volume is empty on first deploy)
+COPY sites/default/sqlconf.php /railway-sqlconf-template.php
+
+# Fix health check 404: index.php uses REQUEST_URI when pathInfo is empty (Apache .htaccess rewrite)
+COPY --chown=apache:root meta/health/index.php /var/www/localhost/htdocs/openemr/meta/health/index.php
+COPY --chown=apache:root meta/health/.htaccess /var/www/localhost/htdocs/openemr/meta/health/.htaccess
+RUN chown -R apache:root /var/www/localhost/htdocs/openemr/meta && \
+    chmod -R 755 /var/www/localhost/htdocs/openemr/meta
+
+# Copy custom health check classes and regenerate autoloader
+COPY --chown=apache:root src/Health/ /var/www/localhost/htdocs/openemr/src/Health/
+RUN composer dump-autoload
+
 RUN sed -i 's/\r$//' /railway-entrypoint.sh && chmod +x /railway-entrypoint.sh
 
 ENTRYPOINT ["/railway-entrypoint.sh"]
