@@ -2,5 +2,10 @@
 # Uses same image and env vars; MySQL is provided by Railway's MySQL database service
 FROM openemr/openemr:7.0.4
 
-# OpenEMR listens on 80/443; Railway routes to PORT (default 80)
-# No changes needed - image matches production docker-compose
+# Railway injects PORT; ensure sites/default/sqlconf.php exists before openemr.sh runs
+# (fixes "Failed to open stream" when volume is empty on first deploy)
+COPY sites/default/sqlconf.php /railway-sqlconf-template.php
+COPY docker/railway/entrypoint.sh /railway-entrypoint.sh
+RUN sed -i 's/\r$//' /railway-entrypoint.sh && chmod +x /railway-entrypoint.sh
+
+ENTRYPOINT ["/railway-entrypoint.sh"]
