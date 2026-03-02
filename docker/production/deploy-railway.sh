@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
-# Deploy OpenEMR and MariaDB to Railway via CLI
-# Prerequisites: railway login, project linked to openemr-system/ directory
+# Deploy OpenEMR to Railway following docker/production/docker-compose.yml
+# Prerequisites: railway login, project linked to openemr/ directory
+#
+# Option A - Docker Compose import (mirrors production: MariaDB + OpenEMR):
+#   1. Drag docker/production/docker-compose.railway.yml onto Railway project canvas
+#   2. Add volumes: mysql -> /var/lib/mysql, openemr -> sites + /var/log
+#   3. Enable Public Domain on OpenEMR service
+#
+# Option B - Manual (Railway MySQL + OpenEMR):
+#   1. + New → Database → MySQL
+#   2. + New → GitHub Repo → select openemr-system, root: openemr/
+#   3. Set OpenEMR env vars (see README.railway.md)
+#   4. Add volumes: /var/www/localhost/htdocs/openemr/sites, /var/log
+#   5. Enable Public Domain on OpenEMR service
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -19,40 +31,6 @@ if ! railway whoami &>/dev/null; then
   exit 1
 fi
 
-echo "Ensuring project is linked..."
-if ! railway status &>/dev/null; then
-  echo "No linked project found. Please run 'railway link' first."
-  exit 1
-fi
-
-echo "--- Deploying MariaDB ---"
-# Add mariadb service if it doesn't exist
-if ! railway service list | grep -q "mariadb"; then
-  echo "Provisioning mariadb:11.8..."
-  railway add --service mariadb --image mariadb:11.8 \
-    -v MYSQL_ROOT_PASSWORD=root \
-    -v MYSQL_DATABASE=openemr \
-    -v MYSQL_USER=openemr \
-    -v MYSQL_PASSWORD=openemr
-else
-  echo "MariaDB service already exists."
-fi
-
-echo "--- Deploying OpenEMR ---"
-# Configure variables to connect to mariadb
-echo "Configuring OpenEMR variables..."
-railway variable set --skip-deploys \
-  MYSQL_HOST=\${{mariadb.RAILWAY_PRIVATE_DOMAIN}} \
-  MYSQL_ROOT_PASS=root \
-  MYSQL_USER=openemr \
-  MYSQL_PASS=openemr \
-  MYSQL_PORT=3306 \
-  OE_USER=admin \
-  OE_PASS=pass \
-  || true
-
-echo "Triggering OpenEMR deployment..."
-railway up -d
-
+railway up --detach
 echo "Deployment triggered. First boot takes 3-5 min for DB setup."
 echo "Check status: railway status"
