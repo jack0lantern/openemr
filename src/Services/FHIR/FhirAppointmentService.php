@@ -11,7 +11,10 @@
 
 namespace OpenEMR\Services\FHIR;
 
+use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Common\Uuid\UuidRegistry;
 use OpenEMR\FHIR\R4\FHIRDomainResource\FHIRAppointment;
+use OpenEMR\FHIR\R4\FHIRResource\FHIRDomainResource;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRAppointmentStatus;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRCodeableConcept;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRCoding;
@@ -21,6 +24,7 @@ use OpenEMR\FHIR\R4\FHIRElement\FHIRMeta;
 use OpenEMR\FHIR\R4\FHIRElement\FHIRParticipationStatus;
 use OpenEMR\FHIR\R4\FHIRResource\FHIRAppointment\FHIRAppointmentParticipant;
 use OpenEMR\Services\AppointmentService;
+use OpenEMR\Services\PatientService;
 use OpenEMR\Services\FHIR\Traits\BulkExportSupportAllOperationsTrait;
 use OpenEMR\Services\FHIR\Traits\FhirBulkExportDomainResourceTrait;
 use OpenEMR\Services\FHIR\Traits\FhirServiceBaseEmptyTrait;
@@ -289,5 +293,285 @@ class FhirAppointmentService extends FhirServiceBase implements IPatientCompartm
         } else {
             return $fhirProvenance;
         }
+    }
+
+    /**
+     * Parses a FHIR Appointment resource, returning the equivalent OpenEMR record.
+     *
+     * @param FHIRDomainResource $fhirResource The source FHIR resource
+     * @return array a mapped OpenEMR data record (array)
+     */
+    public function parseFhirResource(FHIRDomainResource $fhirResource)
+    {
+        if (!$fhirResource instanceof FHIRAppointment) {
+            throw new \BadMethodCallException("FHIR resource must be of type FHIRAppointment");
+        }
+
+        $patientService = new PatientService();
+        $pid = null;
+        $pc_aid = null;
+        $pc_facility = null;
+        $pc_billing_location = null;
+
+        // Note: The deserialization process array-casts these elements.
+        $participantArray = $fhirResource->getParticipant() ?? [];
+        foreach ($participantArray as $participant) {
+            $actor = null;
+            if (is_object($participant) && method_exists($participant, 'getActor')) {
+                $actor = $participant->getActor();
+            } elseif (is_array($participant) && isset($participant['actor'])) {
+                $actor = $participant['actor'];
+            }
+
+            if (empty($actor)) {
+                continue;
+            }
+
+            $ref = '';
+            if (is_object($actor) && method_exists($actor, 'getReference')) {
+                $ref = (string) $actor->getReference();
+            } elseif (is_array($actor) && isset($actor['reference'])) {
+                $ref = (string) $actor['reference'];
+            }
+
+            // Since UtilsService::parseReference expects a FHIRReference object or it might parse an array if modified.
+            // Let's check what UtilsService::parseReference accepts. Wait, I'll just use my own parsing if it's an array.
+            $parsed = null;
+            if (is_object($actor)) {
+                $parsed = UtilsService::parseReference($actor);
+            } elseif (is_array($actor)) {
+                // mock parseReference logic
+                $parsed = ['uuid' => null, 'type' => null];
+                if (!empty($ref)) {
+                    $parts = explode('/', $ref);
+                    if (count($parts) >= 2) {
+                        $parsed['type'] = $parts[0];
+                        $parsed['uuid'] = $parts[1];
+                    }
+                }
+            }
+            $uuid = $parsed['uuid'] ?? null;
+            $resourceType = $parsed['type'] ?? null;
+
+            if (empty($uuid) && !empty($ref)) {
+                $parts = explode('/', $ref);
+                if (count($parts) >= 2) {
+                    $resourceType = $parts[0] ?? null;
+                    $uuid = $parts[1] ?? null;
+                }
+            }
+
+            if (empty($uuid)) {
+                continue;
+            }
+
+            try {
+                $uuidBytes = UuidRegistry::uuidToBytes($uuid);
+            } catch (\Exception $e) {
+                // If it is not a valid UUID, just assume it's the internal ID
+                $uuidBytes = null;
+            }
+
+            if ($resourceType === 'Patient') {
+                if ($uuidBytes) {
+                    $pid = $patientService->getPidByUuid($uuid);
+                } else {
+                    $pid = $uuid; // if the reference is "Patient/1", then $uuid=1, so $pid=1
+                }
+            } elseif ($resourceType === 'Practitioner' || $resourceType === 'Person') {
+                if ($uuidBytes) {
+                    $pc_aid = \OpenEMR\Services\BaseService::getIdByUuid($uuidBytes, 'users', 'id');
+                } else {
+                    $pc_aid = $uuid;
+                }
+            } elseif ($resourceType === 'Location') {
+                if ($uuidBytes) {
+                    $facilityId = QueryUtils::fetchSingleValue(
+                        "SELECT f.id FROM facility f
+                        INNER JOIN uuid_mapping um ON f.uuid = um.target_uuid AND um.resource = 'Location'
+                        WHERE um.uuid = ?",
+                        'id',
+                        [$uuidBytes]
+                    );
+                    if ($facilityId !== null && $facilityId !== false) {
+                        $pc_facility = $facilityId;
+                        $pc_billing_location = $pc_facility;
+                    }
+                } else {
+                    $pc_facility = $uuid;
+                    $pc_billing_location = $uuid;
+                }
+            }
+        }
+
+        if (empty($pid)) {
+            throw new \InvalidArgumentException("Appointment must have a Patient participant");
+        }
+
+        if (empty($pc_facility)) {
+            $pc_facility = QueryUtils::fetchSingleValue("SELECT id FROM facility ORDER BY id LIMIT 1", 'id', []);
+            $pc_billing_location = $pc_facility;
+        }
+
+        $start = $fhirResource->getStart();
+        $startValue = null;
+        if (is_object($start) && method_exists($start, 'getValue')) {
+            $startValue = $start->getValue();
+        } elseif (is_string($start)) {
+            $startValue = $start;
+        }
+
+        if (empty($startValue)) {
+            throw new \InvalidArgumentException("Appointment must have a start date/time");
+        }
+
+        $startDt = new \DateTime($startValue);
+        $pc_eventDate = $startDt->format('Y-m-d');
+        $pc_startTime = $startDt->format('H:i:s');
+
+        $minutesDuration = 30;
+        $minutesEl = $fhirResource->getMinutesDuration();
+        if (is_object($minutesEl) && method_exists($minutesEl, 'getValue')) {
+            $minutesDuration = (int) $minutesEl->getValue();
+        } elseif (is_numeric($minutesEl)) {
+            $minutesDuration = (int) $minutesEl;
+        } elseif ($fhirResource->getEnd()) {
+            $end = $fhirResource->getEnd();
+            $endValue = null;
+            if (is_object($end) && method_exists($end, 'getValue')) {
+                $endValue = $end->getValue();
+            } elseif (is_string($end)) {
+                $endValue = $end;
+            }
+            if ($endValue) {
+                $endDt = new \DateTime($endValue);
+                $minutesDuration = (int) (($endDt->getTimestamp() - $startDt->getTimestamp()) / 60);
+            }
+        }
+        $pc_duration = max(1, $minutesDuration);
+
+        $pc_catid = 1;
+        $appointmentType = $fhirResource->getAppointmentType();
+        $hasCoding = false;
+        $codings = [];
+        if (is_object($appointmentType) && method_exists($appointmentType, 'getCoding')) {
+            $hasCoding = true;
+            $codings = $appointmentType->getCoding() ?? [];
+        } elseif (is_array($appointmentType) && isset($appointmentType['coding'])) {
+            $hasCoding = true;
+            $codings = $appointmentType['coding'];
+        }
+
+        if ($appointmentType && $hasCoding) {
+            $coding = $codings[0] ?? null;
+            $code = null;
+            $display = null;
+            if (is_object($coding)) {
+                $code = method_exists($coding, 'getCode') ? (string) $coding->getCode() : null;
+                $display = method_exists($coding, 'getDisplay') ? (string) $coding->getDisplay() : null;
+            } elseif (is_array($coding)) {
+                $code = $coding['code'] ?? null;
+                $display = $coding['display'] ?? null;
+            }
+            $categories = $this->appointmentService->getCalendarCategories();
+            foreach ($categories as $cat) {
+                if (($code && ($cat['pc_constant_id'] ?? '') === $code)
+                    || ($display && stripos($cat['pc_catname'] ?? '', $display) !== false)) {
+                    $pc_catid = (int) $cat['pc_catid'];
+                    break;
+                }
+            }
+        }
+
+        $pc_apptstatus = '^';
+        $statusEl = $fhirResource->getStatus();
+        $status = null;
+        if (is_object($statusEl) && method_exists($statusEl, 'getValue')) {
+            $status = (string) $statusEl->getValue();
+        } elseif (is_string($statusEl)) {
+            $status = $statusEl;
+        }
+
+        if ($status !== null) {
+            $pc_apptstatus = match ($status) {
+                'booked' => '*',
+                'proposed' => '-',
+                'pending' => '^',
+                'cancelled' => 'x',
+                'fulfilled' => '$',
+                'arrived' => '@',
+                'checked-in' => '+',
+                'noshow' => '?',
+                'waitlist' => 'CALL',
+                default => '^',
+            };
+        }
+
+        $comment = $fhirResource->getComment();
+        $pc_hometext = '';
+        if (is_object($comment) && method_exists($comment, 'getValue')) {
+            $pc_hometext = (string) $comment->getValue();
+        } elseif (is_string($comment)) {
+            $pc_hometext = $comment;
+        }
+
+        $description = $fhirResource->getDescription();
+        $pc_title = 'Appointment ' . $pc_eventDate;
+        if (is_object($description) && method_exists($description, 'getValue')) {
+            $pc_title = (string) $description->getValue();
+        } elseif (is_string($description)) {
+            $pc_title = $description;
+        }
+
+        if (strlen($pc_title) < 2) {
+            $pc_title = 'Appointment';
+        }
+
+        return [
+            'pid' => $pid,
+            'pc_catid' => $pc_catid,
+            'pc_title' => $pc_title,
+            'pc_duration' => $pc_duration,
+            'pc_hometext' => $pc_hometext,
+            'pc_apptstatus' => $pc_apptstatus,
+            'pc_eventDate' => $pc_eventDate,
+            'pc_startTime' => $pc_startTime,
+            'pc_facility' => $pc_facility,
+            'pc_billing_location' => $pc_billing_location,
+            'pc_aid' => $pc_aid,
+        ];
+    }
+
+    /**
+     * Inserts an OpenEMR record into the system.
+     *
+     * @param array $openEmrRecord OpenEMR appointment record
+     * @return ProcessingResult
+     */
+    protected function insertOpenEMRRecord($openEmrRecord)
+    {
+        $processingResult = new ProcessingResult();
+        $pid = $openEmrRecord['pid'] ?? null;
+        if (empty($pid)) {
+            $processingResult->addValidationMessage('pid', 'Patient is required');
+            return $processingResult;
+        }
+
+        unset($openEmrRecord['pid']);
+        $pc_eid = $this->appointmentService->insert($pid, $openEmrRecord);
+
+        if (empty($pc_eid)) {
+            $processingResult->addInternalError('Failed to insert appointment');
+            return $processingResult;
+        }
+
+        $created = $this->appointmentService->getAppointment($pc_eid);
+        if (!empty($created) && isset($created[0])) {
+            $record = $created[0];
+            $fhirResource = $this->parseOpenEMRRecord($record);
+            $processingResult->addData($fhirResource);
+        }
+
+        return $processingResult;
     }
 }

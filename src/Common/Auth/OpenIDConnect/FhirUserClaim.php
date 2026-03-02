@@ -26,7 +26,7 @@ class FhirUserClaim {
         $uuidToUser = new UuidUserAccount($fhirUserId);
         $userRole = $uuidToUser->getUserRole();
         $fhirUserResource = "Person";
-        if ($userRole == UuidUserAccount::USER_ROLE_USERS) {
+        if ($userRole == UuidUserAccount::USER_ROLE_USERS || $userRole == UuidUserAccount::USER_ROLE_SYSTEM) {
             // need to find out if its a practitioner or not
             $practitionerService = new PractitionerService();
             // ONC validation does not accept Person as a valid test case so we have to differentiate practitioners
