@@ -20,6 +20,12 @@ RUN chown -R apache:root /var/www/localhost/htdocs/openemr/meta && \
 COPY --chown=apache:root src/Health/ /var/www/localhost/htdocs/openemr/src/Health/
 RUN composer dump-autoload
 
+# Patch 7.0.4 with POST /fhir/Appointment support (matches docker-compose volume mounts)
+COPY --chown=apache:root apis/routes/_rest_routes_fhir_r4_us_core_3_1_0.inc.php /var/www/localhost/htdocs/openemr/apis/routes/_rest_routes_fhir_r4_us_core_3_1_0.inc.php
+COPY --chown=apache:root src/RestControllers/FHIR/FhirAppointmentRestController.php /var/www/localhost/htdocs/openemr/src/RestControllers/FHIR/FhirAppointmentRestController.php
+COPY --chown=apache:root src/Services/FHIR/FhirAppointmentService.php /var/www/localhost/htdocs/openemr/src/Services/FHIR/FhirAppointmentService.php
+COPY --chown=apache:root src/Services/FHIR/Serialization/FhirAppointmentSerializer.php /var/www/localhost/htdocs/openemr/src/Services/FHIR/Serialization/FhirAppointmentSerializer.php
+
 RUN sed -i 's/\r$//' /railway-entrypoint.sh && chmod +x /railway-entrypoint.sh
 
 ENTRYPOINT ["/railway-entrypoint.sh"]
