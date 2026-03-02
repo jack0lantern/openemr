@@ -297,7 +297,7 @@ CREATE TABLE ccda_table_mapping (
 #EndIf
 
 #IfNotTable ccda_field_mapping
-CREATE TABLE ccda_field_mapping (
+CREATE TABLE IF NOT EXISTS ccda_field_mapping (
   id int(11) NOT NULL AUTO_INCREMENT,
   table_id int(11) DEFAULT NULL,
   ccda_field varchar(100) DEFAULT NULL,
